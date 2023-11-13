@@ -1,0 +1,2 @@
+Mean Squared Error (MSE): 0.0003904314149689394
+Mean Absolute Error (MAE): 0.01507221839392089
