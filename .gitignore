@@ -2,3 +2,4 @@
 ./components/best_model.h5
 ./components/plot.png
 ./components/test_result.txt
+./.idea/
