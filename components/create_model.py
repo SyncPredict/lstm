@@ -1,36 +1,46 @@
 import numpy as np
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from tensorflow.keras.optimizers import Adam
+from keras.models import Sequential
+from keras.layers import LSTM, Dense, Dropout, Bidirectional, BatchNormalization
+from keras.regularizers import l1_l2
+from keras.callbacks import EarlyStopping, ModelCheckpoint
+import logging
 
-def load_data():
-    X_train = np.load('./data/X_train.npy')
-    y_train = np.load('./data/y_train.npy')
-    X_test = np.load('./data/X_test.npy')
-    y_test = np.load('./data/y_test.npy')
-    return X_train, y_train, X_test, y_test
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def build_model(input_shape):
-    model = Sequential()
-    model.add(LSTM(50, return_sequences=True, input_shape=input_shape))
-    model.add(Dropout(0.2))
-    model.add(LSTM(50, return_sequences=False))
-    model.add(Dropout(0.2))
-    model.add(Dense(1))
+# Загрузка данных
+X_train = np.load('./data/X_train.npy')
+Y_train = np.load('./data/Y_train.npy')
+X_test = np.load('./data/X_test.npy')
+Y_test = np.load('./data/Y_test.npy')
 
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='mean_squared_error')
-    return model
+# Параметры модели
+input_shape = (X_train.shape[1], X_train.shape[2])
+units = 100  # Увеличение количества нейронов
+dropout_rate = 0.3  # Увеличенный коэффициент исключения
 
-def train_model(model, X_train, y_train, X_test, y_test):
-    callbacks = [
-        EarlyStopping(monitor='val_loss', patience=10),
-        ModelCheckpoint(filepath='best_model.h5', monitor='val_loss', save_best_only=True)
-    ]
+# Создание модели LSTM
+model = Sequential()
+model.add(Bidirectional(LSTM(units, return_sequences=True, kernel_regularizer=l1_l2(l1=0.01, l2=0.01)), input_shape=input_shape))
+model.add(BatchNormalization())
+model.add(Dropout(dropout_rate))
+model.add(Bidirectional(LSTM(units, return_sequences=False, kernel_regularizer=l1_l2(l1=0.01, l2=0.01))))  # Изменено на return_sequences=False
+model.add(BatchNormalization())
+model.add(Dropout(dropout_rate))
+model.add(Dense(units, activation='relu'))
+model.add(Dense(1))
 
-    history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test), callbacks=callbacks, verbose=1)
-    return history
 
-X_train, y_train, X_test, y_test = load_data()
-model = build_model(X_train.shape[1:])
-history = train_model(model, X_train, y_train, X_test, y_test)
+# Компиляция модели
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+# Callbacks
+early_stopping = EarlyStopping(monitor='val_loss', patience=15)
+model_checkpoint = ModelCheckpoint('./models/best_lstm_model.h5', save_best_only=True, monitor='val_loss', mode='min')
+
+# Обучение модели
+history = model.fit(X_train, Y_train, epochs=150, batch_size=64, validation_data=(X_test, Y_test), callbacks=[early_stopping, model_checkpoint])
+
+# Сохранение модели
+model.save('./models/final_lstm_model.h5')
+
+logging.info("Усовершенствованная модель LSTM успешно создана и обучена.")
