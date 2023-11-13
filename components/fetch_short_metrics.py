@@ -46,11 +46,17 @@ def save_results(res):
     # Обновляем данные, добавляя новые значения из res
     for date, data in res.items():
         if date in existing_data:
-            # Обновляем существующие данные
-            existing_data[date].update(data)
+            for date_t, metrics_data in data.items():
+                if date_t in existing_data:
+                    # Обновляем существующие данные
+                    existing_data[date][date_t].update(metrics_data)
+                else:
+                    # Добавляем новые данные
+                    existing_data[date][date_t] = metrics_data
         else:
-            # Добавляем новые данные
-            existing_data[date] = data
+            existing_data[date] = {}
+            for date_t, metrics_data in data.items():
+                existing_data[date][date_t] = metrics_data
 
     # Перезаписываем файл с обновленными данными
     with open(results_file, 'w') as file:
@@ -105,14 +111,17 @@ def process_result(metrics, results):
         # Iterate over each row in the DataFrame
         for datetime, row in df.iterrows():
             # Convert datetime to string format
-            datetime_str = datetime.strftime("%Y-%m-%d %H:%M:%S")
+            date_str = datetime.strftime("%Y-%m-%d")
+            datetime_str = datetime.strftime("%H:%M:%S")
 
             # If the datetime is not already in the final_result, add it
-            if datetime_str not in final_result:
-                final_result[datetime_str] = {}
+            if date_str not in final_result:
+                final_result[date_str] = {}
+            if datetime_str not in final_result[date_str]:
+                final_result[date_str][datetime_str] = {}
 
             # Add the metric result for this datetime
-            final_result[datetime_str][metric] = row['value']
+            final_result[date_str][datetime_str][metric] = row['value']
 
     save_results(final_result)
 
