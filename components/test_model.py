@@ -6,18 +6,22 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+
 def load_test_data():
     X_test = np.load('./data/X_test.npy')
     y_test = np.load('./data/y_test.npy')
     return X_test, y_test
 
+
 def load_trained_model():
     model = tf.keras.models.load_model('./models/best_lstm_model.h5')
     return model
 
+
 def test_model(model, X_test, y_test):
     y_pred = model.predict(X_test)
     return y_pred
+
 
 def evaluate_results(y_test, y_pred):
     # Удаление лишнего измерения из y_pred
@@ -25,7 +29,20 @@ def evaluate_results(y_test, y_pred):
 
     mse = mean_squared_error(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
-    return mse, mae
+
+    # Расчет абсолютных ошибок и их стандартного отклонения
+    abs_errors = np.abs(y_test - y_pred)
+    std_dev = np.std(abs_errors)
+
+    # Установим порог как одно стандартное отклонение
+    threshold = std_dev
+
+    # Расчет процента предсказаний в пределах порога
+    correct_predictions = abs_errors <= threshold
+    accuracy = np.mean(correct_predictions) * 100
+    total_predictions = len(y_test)
+
+    return mse, mae, accuracy, total_predictions, threshold
 
 def plot_results(y_test, y_pred, save_path=None):
     plt.figure(figsize=(12, 6))
@@ -41,26 +58,6 @@ def plot_results(y_test, y_pred, save_path=None):
 
     plt.show()
 
-def calculate_potential_profit(y_test, y_pred):
-    position = 0
-    initial_balance = 10000
-    balance = initial_balance
-    transaction_cost = 0.1  # Процент комиссии за транзакцию
-
-    for i in range(len(y_test)):
-        if y_pred[i] > y_test[i]:  # Покупка
-            if balance >= y_test[i]:
-                position += 1
-                balance -= y_test[i] * (1 + transaction_cost / 100)
-        elif position > 0 and y_pred[i] < y_test[i]:  # Продажа
-            balance += y_test[i] * position * (1 - transaction_cost / 100)
-            position = 0
-
-    if position > 0:
-        balance += y_test[-1] * position * (1 - transaction_cost / 100)
-
-    potential_profit = balance - initial_balance
-    return potential_profit
 
 def main():
     X_test, y_test = load_test_data()
@@ -70,9 +67,10 @@ def main():
     logging.info(f"Shape of y_test: {y_test.shape}")
     logging.info(f"Shape of y_pred: {y_pred.shape}")
 
-    mse, mae = evaluate_results(y_test, y_pred)
-    # Остальной код...
-
+    mse, mae, accuracy, total_predictions, threshold = evaluate_results(y_test, y_pred)
+    logging.info(f'Accuracy within threshold: {accuracy}%')
+    logging.info(f'Threshold: {threshold}%')
+    logging.info(f'Total predictions: {total_predictions}')
 
     logging.info(f'Mean Squared Error (MSE): {mse}')
     logging.info(f'Mean Absolute Error (MAE): {mae}')
@@ -81,10 +79,8 @@ def main():
         file.write(f'Mean Squared Error (MSE): {mse}\n')
         file.write(f'Mean Absolute Error (MAE): {mae}\n')
 
-    potential_profit = calculate_potential_profit(y_test, y_pred)
-    logging.info(f'Potential Profit: {potential_profit}')
-
     plot_results(y_test, y_pred, save_path='plot.png')
+
 
 if __name__ == "__main__":
     main()

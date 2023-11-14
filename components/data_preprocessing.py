@@ -4,6 +4,8 @@ from sklearn.preprocessing import MinMaxScaler
 from scipy import stats
 import logging
 import talib
+from scipy.stats.mstats import winsorize
+
 # Настройка логгирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -37,25 +39,24 @@ def load_data(file_path: str) -> pd.DataFrame:
 
 
 def handle_missing_values(dataframe: pd.DataFrame) -> pd.DataFrame:
-    # Обработка пропущенных значений в 'price_usd' и 'volume_usd'
-    return dataframe[dataframe['price_usd'].notna() & dataframe['volume_usd'].notna()]
+    # Заполнение последним известным значением
+    dataframe['price_usd'].fillna(method='ffill', inplace=True)
+    dataframe['volume_usd'].fillna(method='ffill', inplace=True)
+    return dataframe
 
-def remove_outliers(dataframe: pd.DataFrame, method='iqr', z_thresh=3) -> pd.DataFrame:
-    if method == 'z_score':
-        z_scores = np.abs(stats.zscore(dataframe))
-        filtered_entries = (z_scores < z_thresh).all(axis=1)
-    elif method == 'iqr':
-        Q1 = dataframe.quantile(0.25)
-        Q3 = dataframe.quantile(0.75)
-        IQR = Q3 - Q1
-        filtered_entries = ~((dataframe < (Q1 - 1.5 * IQR)) | (dataframe > (Q3 + 1.5 * IQR))).any(axis=1)
-    else:
-        raise ValueError(f"Неверный метод удаления выбросов: {method}")
-    return dataframe[filtered_entries]
 
-def interpolate_missing_values(dataframe: pd.DataFrame, method='linear') -> pd.DataFrame:
-    # Интерполяция только после обработки пропущенных значений
-    return dataframe.interpolate(method=method)
+from scipy.stats.mstats import winsorize
+
+def limit_outliers(dataframe: pd.DataFrame, limits=(0.05, 0.05)) -> pd.DataFrame:
+    # Ограничиваем выбросы для каждого столбца по отдельности
+    for col in dataframe.columns:
+        dataframe[col] = winsorize(dataframe[col], limits=limits)
+    return dataframe
+
+
+def interpolate_missing_values(dataframe: pd.DataFrame) -> pd.DataFrame:
+    return dataframe.interpolate(method='time')
+
 
 def add_technical_indicators(dataframe: pd.DataFrame) -> pd.DataFrame:
     dataframe['SMA'] = talib.SMA(dataframe['price_usd'], timeperiod=25)
@@ -64,14 +65,15 @@ def add_technical_indicators(dataframe: pd.DataFrame) -> pd.DataFrame:
     dataframe['MACD'], dataframe['MACD_signal'], _ = talib.MACD(dataframe['price_usd'], fastperiod=12, slowperiod=26, signalperiod=9)
     return dataframe
 
-def scale_data(dataframe: pd.DataFrame, scaler=MinMaxScaler()) -> pd.DataFrame:
-    # Масштабирование данных
+
+def scale_data(dataframe: pd.DataFrame, scaler=RobustScaler()) -> pd.DataFrame:
     scaled_data = scaler.fit_transform(dataframe)
     return pd.DataFrame(scaled_data, columns=dataframe.columns)
+
 def preprocess_data(file_path: str) -> pd.DataFrame:
     df = load_data(file_path)
     df = handle_missing_values(df)
-    df = remove_outliers(df)
+    df = limit_outliers(df)
     df = interpolate_missing_values(df)
     df = add_technical_indicators(df)
     df = df.dropna()
