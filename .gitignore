@@ -1,7 +1,3 @@
-./components/data/
-./components/best_model.h5
-./components/plot.png
-./components/test_result.txt
 ./.idea/
 ./best_model.tf/
 ./final_model.tf/
