@@ -1,48 +1,57 @@
-from data_preprocessing import preprocess_data
-import numpy as np
-from sklearn.model_selection import train_test_split
 import logging
+import os
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import numpy as np
+import pandas as pd
 
-file_path = './results.json'
+from components.data_preprocessing import load_and_preprocess_data
 
-# Функция для создания временных рядов
-def create_time_series(data, look_back=1):
-    X, Y = [], []
-    for i in range(len(data) - look_back - 1):
-        a = data[i:(i + look_back), :]
-        X.append(a)
-        Y.append(data[i + look_back, 0])
-    return np.array(X), np.array(Y)
 
-# Функция для разделения данных на обучающую и тестовую выборку
-def train_test_split_data(data, test_size=0.2, look_back=1):
-    # Нормализация данных
-    data_normalized = data.values.astype('float32')
-    # Разделение данных
-    train_size = int(len(data_normalized) * (1 - test_size))
-    train, test = data_normalized[0:train_size, :], data_normalized[train_size - look_back:, :]
-    # Создание временных рядов
-    X_train, Y_train = create_time_series(train, look_back)
-    X_test, Y_test = create_time_series(test, look_back)
-    return X_train, Y_train, X_test, Y_test
+def create_dataset(X, y, time_steps=1):
+    """
+    Функция для преобразования временных рядов в формат, подходящий для обучения LSTM.
+    X - входные данные
+    y - целевая переменная
+    time_steps - количество временных шагов в ряду
+    """
+    Xs, ys = [], []
+    for i in range(len(X) - time_steps):
+        v = X.iloc[i:(i + time_steps)].values
+        Xs.append(v)
+        ys.append(y.iloc[i + time_steps])
+    return np.array(Xs), np.array(ys)
 
-if __name__ == "__main__":
-    prepared_data = preprocess_data(file_path)
 
-    # Параметры для временных рядов
-    look_back = 5  # Количество временных шагов для входных данных
+def prepare_data_for_lstm(train, test, target='market_price', time_steps=30):
+    """
+    Подготовка данных для обучения LSTM.
+    train - обучающий набор данных
+    test - тестовый набор данных
+    target - целевая переменная, по умолчанию 'market_price'
+    time_steps - количество временных шагов, по умолчанию 30
+    """
+    # Выделение целевой переменной
+    train_y = train[[target]]
+    test_y = test[[target]]
 
-    # Разделение данных на обучающую и тестовую выборки
-    X_train, Y_train, X_test, Y_test = train_test_split_data(prepared_data, test_size=0.2, look_back=look_back)
+    # Удаление целевой переменной из входных данных
+    train_X = train.drop([target], axis=1)
+    test_X = test.drop([target], axis=1)
 
-    logging.info(f'Размер обучающей выборки: {X_train.shape}, Размер тестовой выборки: {X_test.shape}')
+    # Создание наборов данных для обучения LSTM
+    train_X, train_y = create_dataset(train_X, train_y, time_steps)
+    test_X, test_y = create_dataset(test_X, test_y, time_steps)
 
-    # Сохранение обработанных данных
-    np.save('./data/X_train.npy', X_train)
-    np.save('./data/Y_train.npy', Y_train)
-    np.save('./data/X_test.npy', X_test)
-    np.save('./data/Y_test.npy', Y_test)
+    return train_X, train_y, test_X, test_y
 
-    logging.info("Обработанные данные успешно сохранены.")
+
+
+
+
+def process_data(data):
+    train, test = load_and_preprocess_data(data)
+    prepared_data = prepare_data_for_lstm(train, test)
+
+    logging.info("Обработанные данные успешно созданы.")
+
+    return prepared_data

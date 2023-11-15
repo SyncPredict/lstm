@@ -1,77 +1,74 @@
-import numpy as np
-from keras.models import Model
-from keras.layers import Input, LSTM, Dense, Dropout, Bidirectional, LayerNormalization, Conv1D, Flatten, concatenate, Attention, LeakyReLU
-from keras.regularizers import l1_l2, l1, l2
-from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
-from keras.optimizers import Adam
-import tensorflow as tf
 import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Загрузка данных
-X_train = np.load('./data/X_train.npy')
-Y_train = np.load('./data/Y_train.npy')
-X_test = np.load('./data/X_test.npy')
-Y_test = np.load('./data/Y_test.npy')
-
-print("X_train shape:", X_train.shape)
-print("Y_train shape:", Y_train.shape)
-print("X_test shape:", X_test.shape)
-print("Y_test shape:", Y_test.shape)
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 
-# Параметры модели
-input_shape = (X_train.shape[1], X_train.shape[2])
-units = 200  # Увеличенное количество нейронов
-conv_filters = 64  # Количество фильтров для CNN
-kernel_size = 3  # Размер ядра для CNN
-dropout_rate = 0.4  # Увеличенный коэффициент Dropout
-regularizer = l1_l2(l1=0.005, l2=0.005)
+def create_lstm_model(input_shape):
+    """
+    Создание модели LSTM для предсказания цены на рынке.
 
-# Входной слой
-input_layer = Input(shape=input_shape)
+    Параметры:
+    input_shape - форма входных данных, например (30, n_features)
+    """
+    model = Sequential()
 
-# Сверточный слой
-conv_layer = Conv1D(filters=conv_filters, kernel_size=kernel_size, activation='relu', padding='same')(input_layer)
-conv_layer = LayerNormalization()(conv_layer)
-conv_layer = Dropout(dropout_rate)(conv_layer)
+    # Первый слой LSTM с Dropout
+    model.add(LSTM(50, return_sequences=True, input_shape=input_shape))
+    model.add(Dropout(0.2))
 
-# LSTM слои
-x = Bidirectional(LSTM(units, return_sequences=True, kernel_regularizer=regularizer))(conv_layer)
-x = LayerNormalization()(x)
-x = Dropout(dropout_rate)(x)
+    # Второй слой LSTM
+    model.add(LSTM(50, return_sequences=False))
+    model.add(Dropout(0.2))
 
-# Механизм внимания
-# attention = Attention()([x, x])
-# x = concatenate([x, attention])
+    # Полносвязный слой для предсказания
+    model.add(Dense(25))
+    model.add(Dense(1))  # Один выход для предсказания цены
 
-# Дополнительный LSTM слой
-x = Bidirectional(LSTM(units, return_sequences=False, kernel_regularizer=regularizer))(x)
-x = LayerNormalization()(x)
-x = Dropout(dropout_rate)(x)
+    # Компиляция модели
+    model.compile(optimizer='adam', loss='mean_squared_error')
 
-# Полносвязные слои
-x = Dense(units, activation='relu')(x)
-x = Dense(units, activation=LeakyReLU(alpha=0.1))(x)  # Использование LeakyReLU
-output_layer = Dense(1)(x)
+    return model
 
-# Создание модели
-model = Model(inputs=input_layer, outputs=output_layer)
 
-# Компиляция модели
-optimizer = Adam(learning_rate=0.001)
-model.compile(optimizer=optimizer, loss='mean_squared_error')
+def get_callbacks():
+    """
+    Функция для получения обратных вызовов модели.
+    """
+    early_stopping = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
+    model_checkpoint = ModelCheckpoint('best_model.tf', monitor='val_loss', mode='min',save_format="tf", save_best_only=True)
 
-# Callbacks
-early_stopping = EarlyStopping(monitor='val_loss', patience=25, restore_best_weights=True)
-model_checkpoint = ModelCheckpoint('./models/best_lstm_model.h5', save_best_only=True, monitor='val_loss', mode='min')
-reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=10, min_lr=0.00001)
+    return [early_stopping, model_checkpoint]
 
-# Обучение модели
-history = model.fit(X_train, Y_train, epochs=250, batch_size=16, validation_data=(X_test, Y_test), callbacks=[early_stopping, model_checkpoint, reduce_lr])
 
-# Сохранение модели
-model.save('./models/final_lstm_model.h5')
+def create_model(data):
+    train_X, train_y, test_X, test_y = data
+    number_of_features = 5  # 'hash_rate', 'difficulty', 'miners_revenue', 'market_cap', 'total_bitcoins'
 
-logging.info("Усовершенствованная и усложненная модель LSTM успешно создана и обучена.")
+    input_shape = (train_X.shape[1], number_of_features)  # Например, (30, 7)
+    model = create_lstm_model(input_shape)
+
+    # Получение обратных вызовов
+    callbacks = get_callbacks()
+
+    # Обучение модели
+    history = model.fit(
+        train_X, train_y,
+        epochs=100,
+        batch_size=32,
+        validation_data=(test_X, test_y),
+        callbacks=callbacks,
+        verbose=1
+    )
+
+    # Сохранение окончательной модели
+    model.save('final_model.tf',save_format="tf")
+
+    # При необходимости, можно также сохранить историю обучения
+    np.save('./training_history.npy', history.history)
+    logging.info("Модель успешно сохранена.")
+
+
